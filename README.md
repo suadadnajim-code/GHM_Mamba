@@ -1,5 +1,4 @@
 # GHM_Mamba
-# GHM-Mamba
 
 Official implementation of:
 
@@ -23,7 +22,7 @@ The framework decomposes each input image into 16 GHM coefficient maps organized
 
 Experiments were conducted using the publicly available **MosMed-L** dataset, derived from MosMedData.
 
-Two PNG slices were selected per patient using a fixed seed of 123. The data were split at the patient level with no patient overlap:
+Two PNG slices were selected per patient. The data were split at the patient level with no patient overlap:
 
 | Split      | Patients | Images |
 | ---------- | -------: | -----: |
