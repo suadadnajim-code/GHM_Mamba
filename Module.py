@@ -1,6 +1,6 @@
 
 """
-Project 2 : 
+Project: 
 """
 from __future__ import annotations
 import os, math, random
@@ -300,10 +300,8 @@ def batch_psnr_ssim_basic_sr(
         float(np.mean(psnr_values)),
         float(np.mean(ssim_values))
     )
-# -----------------------------
 # Network building blocks
-# -----------------------------
-#--------------------------------------------------------------
+
 class GHMFullMWT2D(nn.Module):
     """
     Full 2D GHM multiwavelet transform using MATLAB-style repeated-row preprocessing.
@@ -645,9 +643,7 @@ class GHMInverseMWT2D(nn.Module):
             + offsets[None, :]
         ) % length_in
 
-        # Construct the analysis matrix column by column
-        # by applying the exact forward operation to basis
-        # vectors.
+        # Construct the analysis matrix column by column by applying the exact forward operation to basis vectors
         for input_index in range(length_in):
 
             basis_signal = torch.zeros(
@@ -781,8 +777,7 @@ class GHMInverseMWT2D(nn.Module):
             w2
         )
 
-        # Each spatial width position gets one coefficient
-        # vector of length 4*H2.
+        # Each spatial width position gets one coefficient vector of length 4*H2
         coefficient_vectors = (
             bands_grouped
             .permute(0, 1, 4, 2, 3)
@@ -954,7 +949,8 @@ class GHMInverseMWT2D(nn.Module):
             )
 
         return reconstructed
-#-------------------------------------------------------
+
+
 class HaarDWT2D(nn.Module):
     """
     Fixed orthonormal 2D Haar wavelet transform.
@@ -1033,8 +1029,7 @@ class HaarDWT2D(nn.Module):
         )
 
         return bands
-#----------------------------------------------------------
-# --------------------------------------------------------------
+
 class HaarInverseDWT2D(nn.Module):
     """
     Fixed inverse orthonormal 2D Haar wavelet transform.
@@ -1151,7 +1146,6 @@ class HaarInverseDWT2D(nn.Module):
 
         return reconstructed
 
-#--------------------------------------------------------------
 class MambaBlock2D(nn.Module):
     """
     2D -> sequence -> Mamba -> 2D
@@ -1184,25 +1178,9 @@ class MambaBlock2D(nn.Module):
 
 
 
-#-----------------------------------------
-class ConvResBlock(nn.Module):
-    """
-    Simple residual conv block for low-frequency branch.
-    """
-    def __init__(self, channels: int):
-        super().__init__()
-        self.block = nn.Sequential(
-            nn.Conv2d(channels, channels, 3, 1, 1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(channels, channels, 3, 1, 1),
-        )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x + self.block(x)
 
-#---------------------------------------------------------------
-
-# generator--------------
+# generator
 class LayerNorm2D(nn.Module):
     """
     Channel-wise LayerNorm for 2D feature maps.
@@ -1446,28 +1424,27 @@ class ResidualGDFNBlock(nn.Module):
 #--------------------------------------
 class AdaptiveGHMFrequencyCollaborativeRefinement(nn.Module):
     """
-    Adaptive GHM frequency-spatial collaborative refinement.
+    Adaptive GHM frequency-spatial collaborative refinement
 
-    This block operates after LF-guided alignment.
 
     Input:
         bands:
             (N, B, C, H, W)
 
     Main idea:
-        1. Build explicit frequency context from the
+        Build explicit frequency context from the
            Low / Mixed / High GHM band groups.
 
-        2. Refine every band locally using a spatial GDFN path.
+        Refine every band locally using a spatial GDFN path.
 
-        3. Generate a frequency-conditioned correction for
+        Generate a frequency-conditioned correction for
            every band using the shared GHM frequency context.
 
-        4. Learn an adaptive gate between:
+        Learn an adaptive gate between:
                local spatial correction
                frequency-guided correction
 
-        5. Inject the collaborative correction residually
+        Inject the collaborative correction residually
            with a conservative learnable strength.
 
     Output:
@@ -1511,16 +1488,12 @@ class AdaptiveGHMFrequencyCollaborativeRefinement(nn.Module):
             int(i) for i in high_band_indices
         )
 
-        # -------------------------------------------------
-        # 1. Frequency-group context
-        #
+        # Frequency-group context
         # Mean Low features   : C
         # Mean Mixed features : C
         # Mean High features  : C
-        #
-        # concatenation:
-        #       3C -> C
-        # -------------------------------------------------
+        # concatenation:       3C -> C
+
         self.frequency_context = nn.Sequential(
             nn.Conv2d(
                 channels * 3,
@@ -1553,13 +1526,8 @@ class AdaptiveGHMFrequencyCollaborativeRefinement(nn.Module):
             )
         )
 
-        # -------------------------------------------------
-        # 2. Local spatial branch
-        #
-        # This preserves the useful role of the original
-        # GDFN, but produces a correction instead of a
-        # complete residual block.
-        # -------------------------------------------------
+        # Local spatial correction
+        
         self.local_norm = LayerNorm2D(
             channels=channels
         )
@@ -1570,14 +1538,10 @@ class AdaptiveGHMFrequencyCollaborativeRefinement(nn.Module):
             bias=bias
         )
 
-        # -------------------------------------------------
-        # 3. Frequency-conditioned branch
-        #
-        # Each band feature is combined with the common
-        # Low/Mixed/High frequency context.
-        #
+        # Frequency-conditioned correction 
+        # Each band feature is combined with the common Low/Mixed/High frequency context
         # 2C -> C
-        # -------------------------------------------------
+
         self.frequency_adapter = nn.Sequential(
             nn.Conv2d(
                 channels * 2,
@@ -1610,16 +1574,10 @@ class AdaptiveGHMFrequencyCollaborativeRefinement(nn.Module):
             )
         )
 
-        # -------------------------------------------------
-        # 4. Adaptive collaboration gate
-        #
+        # Adaptive collaboration gate
         # The gate decides, for every spatial position and
-        # channel, how much to use:
-        #
-        # frequency-guided correction
-        # versus
-        # local spatial correction.
-        # -------------------------------------------------
+        # channel, how much to use: frequency-guided correction versus local spatial correction.
+
         self.collaboration_gate = nn.Sequential(
             nn.Conv2d(
                 channels * 3,
@@ -1644,13 +1602,9 @@ class AdaptiveGHMFrequencyCollaborativeRefinement(nn.Module):
             nn.Sigmoid()
         )
 
-        # -------------------------------------------------
-        # Conservative residual strength.
-        #
-        # A single scale is deliberately used in the first
-        # experiment to avoid adding extra Low/Mixed/High
-        # assumptions.
-        # -------------------------------------------------
+        
+        # Learnable residual strength
+        
         self.collaboration_scale = nn.Parameter(
             torch.tensor(
                 init_scale,
@@ -1678,9 +1632,7 @@ class AdaptiveGHMFrequencyCollaborativeRefinement(nn.Module):
                 f"received {c}."
             )
 
-        # -------------------------------------------------
         # Validate band indices
-        # -------------------------------------------------
         all_indices = (
             self.low_band_indices
             + self.mixed_band_indices
@@ -1697,12 +1649,10 @@ class AdaptiveGHMFrequencyCollaborativeRefinement(nn.Module):
         if sorted(all_indices) != list(range(b)):
             raise ValueError(
                 "Low/Mixed/High band indices must form an "
-                "exact partition of all input bands."
+                "exact partition of all input bands"
             )
 
-        # -------------------------------------------------
-        # 1. Explicit GHM frequency-group summaries
-        # -------------------------------------------------
+        # Explicit GHM frequency-group summaries
         low_context = bands[
             :,
             self.low_band_indices,
@@ -1733,11 +1683,11 @@ class AdaptiveGHMFrequencyCollaborativeRefinement(nn.Module):
             dim=1
         )
 
-        # -------------------------------------------------
+       
         # 2. Learn shared frequency context
-        #
-        # (N,3C,H,W) -> (N,C,H,W)
-        # -------------------------------------------------
+        # (N,3C,H,W)
+        #  (N,C,H,W)
+
         frequency_context = self.frequency_context(
             torch.cat(
                 [
@@ -1749,13 +1699,9 @@ class AdaptiveGHMFrequencyCollaborativeRefinement(nn.Module):
             )
         )
 
-        # -------------------------------------------------
-        # 3. Flatten bands for shared processing
-        #
+        # Flatten bands for shared processing
         # (N,B,C,H,W)
-        # ->
         # (N*B,C,H,W)
-        # -------------------------------------------------
         bands_flat = bands.reshape(
             n * b,
             c,
@@ -1767,17 +1713,12 @@ class AdaptiveGHMFrequencyCollaborativeRefinement(nn.Module):
             bands_flat
         )
 
-        # -------------------------------------------------
-        # 4. Local spatial correction
-        # -------------------------------------------------
+        # Local spatial correction
         local_delta = self.local_ffn(
             normalized_flat
         )
 
-        # -------------------------------------------------
-        # 5. Broadcast the learned GHM frequency context
-        #    to every band.
-        # -------------------------------------------------
+        # Broadcast the learned GHM frequency context  to every band.
         context_flat = (
             frequency_context
             .unsqueeze(1)
@@ -1797,9 +1738,7 @@ class AdaptiveGHMFrequencyCollaborativeRefinement(nn.Module):
             )
         )
 
-        # -------------------------------------------------
-        # 6. Frequency-guided correction
-        # -------------------------------------------------
+        # Frequency-guided correction
         frequency_delta = self.frequency_adapter(
             torch.cat(
                 [
@@ -1810,15 +1749,10 @@ class AdaptiveGHMFrequencyCollaborativeRefinement(nn.Module):
             )
         )
 
-        # -------------------------------------------------
-        # 7. Adaptive collaboration
-        #
-        # Gate ≈ 0:
-        #     prefer local spatial refinement
-        #
-        # Gate ≈ 1:
-        #     prefer frequency-guided refinement
-        # -------------------------------------------------
+        # Adaptive collaboration
+        # Gate ≈ 0: prefer local spatial refinement
+        # Gate ≈ 1: prefer frequency-guided refinement
+
         gate = self.collaboration_gate(
             torch.cat(
                 [
@@ -1855,123 +1789,8 @@ class AdaptiveGHMFrequencyCollaborativeRefinement(nn.Module):
         )
 
         return refined_bands
-#--------------------------------------
 
-class CNNMambaGatedFusion(nn.Module):
-    """
-    Adaptive fusion between local CNN features and global Mamba features.
 
-    The gate determines the relative contribution of each branch:
-
-        fused = gate * CNN + (1 - gate) * Mamba
-    """
-
-    def __init__(
-        self,
-        channels: int = 144
-    ):
-        super().__init__()
-
-        self.gate = nn.Sequential(
-            nn.Conv2d(
-                channels * 2,
-                channels,
-                kernel_size=3,
-                stride=1,
-                padding=1
-            ),
-            nn.GELU(),
-
-            nn.Conv2d(
-                channels,
-                channels,
-                kernel_size=3,
-                stride=1,
-                padding=1
-            ),
-            nn.Sigmoid()
-        )
-
-        self.refine = nn.Sequential(
-            nn.Conv2d(
-                channels,
-                channels,
-                kernel_size=3,
-                stride=1,
-                padding=1
-            ),
-            nn.GELU(),
-
-            nn.Conv2d(
-                channels,
-                channels,
-                kernel_size=3,
-                stride=1,
-                padding=1
-            )
-        )
-
-    def forward(
-        self,
-        cnn_features: torch.Tensor,
-        mamba_features: torch.Tensor
-    ) -> torch.Tensor:
-
-        if cnn_features.shape != mamba_features.shape:
-            raise ValueError(
-                "CNN and Mamba feature shapes must match. "
-                f"CNN={tuple(cnn_features.shape)}, "
-                f"Mamba={tuple(mamba_features.shape)}."
-            )
-
-        joint = torch.cat(
-            [
-                cnn_features,
-                mamba_features
-            ],
-            dim=1
-        )
-
-        gate = self.gate(joint)
-
-        fused = (
-            gate * cnn_features
-            + (1.0 - gate) * mamba_features
-        )
-
-        fused = fused + self.refine(fused)
-
-        return fused
-#---------------------------------------------------
-class CNNMambaAverageFusion(nn.Module):
-    """
-    Parameter-free average fusion between CNN and Mamba features.
-
-    fused = 0.5 * CNN + 0.5 * Mamba
-    """
-
-    def __init__(self):
-        super().__init__()
-
-    def forward(
-        self,
-        cnn_features: torch.Tensor,
-        mamba_features: torch.Tensor
-    ) -> torch.Tensor:
-
-        if cnn_features.shape != mamba_features.shape:
-            raise ValueError(
-                "CNN and Mamba feature shapes must match. "
-                f"CNN={tuple(cnn_features.shape)}, "
-                f"Mamba={tuple(mamba_features.shape)}."
-            )
-
-        fused = 0.5 * (
-            cnn_features + mamba_features
-        )
-
-        return fused
-#---------------------------------------------------
 class HFAlignmentModule(nn.Module):
     """
     Low-frequency-guided residual alignment with separate
@@ -2000,8 +1819,7 @@ class HFAlignmentModule(nn.Module):
                 "high"
 
     Output:
-        aligned:
-            Residually corrected band feature with the same shape.
+        aligned:   Residually corrected band feature with the same shape
     """
 
     def __init__(
@@ -2026,7 +1844,7 @@ class HFAlignmentModule(nn.Module):
 
         self.channels = int(channels)
 
-        # Shared feature-extraction network for both groups.
+        # Shared feature-extraction network for both groups
         self.feat = nn.Sequential(
             nn.Conv2d(
                 channels * 2,
@@ -2110,8 +1928,8 @@ class HFAlignmentModule(nn.Module):
 
         if band_group not in ("mixed", "high"):
             raise ValueError(
-                "band_group must be either 'mixed' or 'high'. "
-                f"Received '{band_group}'."
+                "band_group must be either 'mixed' or 'high' "
+                f"Received '{band_group}'"
             )
 
         joint = torch.cat(
@@ -2151,10 +1969,10 @@ class HFAlignmentModule(nn.Module):
         )
 
         return aligned
-# ---------------------------------------------------
+
 class FullResolutionRefinement(nn.Module):
     """
-    Lightweight full-resolution residual refinement.
+    #full-resolution residual refinement
 
     The module operates after inverse wavelet reconstruction.
 
@@ -2177,8 +1995,7 @@ class FullResolutionRefinement(nn.Module):
             -> 3x3 Conv
 
     Output:
-        A one-channel residual correction map at the
-        original spatial resolution.
+        A one-channel residual correction map at the  original spatial resolution
     """
 
     def __init__(
@@ -2197,12 +2014,10 @@ class FullResolutionRefinement(nn.Module):
             hidden_channels
         )
 
-        # -------------------------------------------------
-        # Two image channels enter the refiner:
-        #
+        # Two image channels enter the refiner 
         #   channel 0: coarse denoised image
         #   channel 1: original noisy image
-        # -------------------------------------------------
+
         self.input_projection = nn.Sequential(
             nn.Conv2d(
                 2,
@@ -2215,9 +2030,7 @@ class FullResolutionRefinement(nn.Module):
             nn.GELU()
         )
 
-        # -------------------------------------------------
-        # Lightweight full-resolution feature refinement.
-        # -------------------------------------------------
+        # Full-resolution residual refinement
         self.refinement = nn.Sequential(
             ResidualGDFNBlock(
                 channels=hidden_channels,
@@ -2234,9 +2047,7 @@ class FullResolutionRefinement(nn.Module):
             )
         )
 
-        # -------------------------------------------------
-        # Predict one residual correction map.
-        # -------------------------------------------------
+        # Predict one residual correction map
         self.output_projection = nn.Conv2d(
             hidden_channels,
             1,
@@ -2246,16 +2057,11 @@ class FullResolutionRefinement(nn.Module):
             bias=True
         )
 
-        # -------------------------------------------------
         # Conservative initialization:
-        #
         # At initialization:
-        #
-        #     correction ≈ 0
-        #
-        # Therefore the new model initially behaves like
-        # the original coarse reconstruction.
-        # -------------------------------------------------
+        # correction ≈ 0
+        # Therefore the new model initially behaves like the original coarse reconstruction
+
         nn.init.zeros_(
             self.output_projection.weight
         )
@@ -2318,20 +2124,15 @@ class FullResolutionRefinement(nn.Module):
         )
 
         return correction
-#--------------------------------------------------
 class MedMultiwaveletDenoisingGenerator(nn.Module):
 
     def __init__(
         self,
         in_ch: int = 1,
-        out_ch: int = 1,
         wavelet_type: str = "ghm",
         band_feature_channels: int = 40,
         feature_channels: int = 144,
-        cnn_blocks: int = 6,
         mamba_blocks: int = 6,
-        branch_mode: str = "dual",
-        fusion_type: str = "gated",
         use_alignment: bool = True,
         use_band_refinement: bool = True,
         use_full_res_refinement: bool = True,
@@ -2346,70 +2147,25 @@ class MedMultiwaveletDenoisingGenerator(nn.Module):
             )
 
         self.in_ch = in_ch
-        self.out_ch = out_ch
         
         self.wavelet_type = wavelet_type.lower()
         
-        self.branch_mode = branch_mode.lower()
-        self.fusion_type = fusion_type.lower()
-        
+                
         self.use_alignment = bool(use_alignment)
         self.use_band_refinement = bool(
             use_band_refinement
         )
         self.use_full_res_refinement = bool(
             use_full_res_refinement
-        )
-
-        if self.branch_mode not in (
-            "cnn",
-            "mamba",
-            "dual"
-        ):
-            raise ValueError(
-                "branch_mode must be 'cnn', 'mamba', or 'dual'. "
-                f"Received '{branch_mode}'."
-            )
-        
-        if self.branch_mode == "dual":
-        
-            if self.fusion_type not in (
-                "average",
-                "gated"
-            ):
-                raise ValueError(
-                    "For branch_mode='dual', fusion_type must be "
-                    "'average' or 'gated'. "
-                    f"Received '{fusion_type}'."
-                )
-        
-        else:
-        
-            if self.fusion_type != "none":
-                raise ValueError(
-                    "For CNN-only or Mamba-only experiments, "
-                    "fusion_type must be 'none'. "
-                    f"Received '{fusion_type}'."
-                )
-               
+        )         
 
         
 
         self.band_feature_channels = band_feature_channels
         self.feature_channels = feature_channels
 
-        # -------------------------------------------------
-        # 1. wavelet decomposition
-        #
-        # Input:
-        #   (N,1,H,W)
-        #
-        # Output:
-        #   (N,16,H/2,W/2)
-        # -------------------------------------------------
-        # -------------------------------------------------
-        # 1. Wavelet decomposition and reconstruction
-        # -------------------------------------------------
+        
+        # Wavelet decomposition and reconstruction
         if self.wavelet_type == "ghm":
         
             self.dwt = GHMFullMWT2D()
@@ -2434,7 +2190,6 @@ class MedMultiwaveletDenoisingGenerator(nn.Module):
                 "Expected 'ghm' or 'haar', "
                 f"received '{wavelet_type}'."
             )
-        # -------------------------------------------------
         # GHM band organization
         #
         # Final GHM band ordering:
@@ -2459,9 +2214,7 @@ class MedMultiwaveletDenoisingGenerator(nn.Module):
         # 14: W-H1 × H-H0
         # 15: W-H1 × H-H1
 
-        # -------------------------------------------------
         # Wavelet-dependent band organization
-        # -------------------------------------------------
         if self.wavelet_type == "ghm":
         
             # Low-low GHM components.
@@ -2473,8 +2226,7 @@ class MedMultiwaveletDenoisingGenerator(nn.Module):
             )
         
             # Mixed-frequency components:
-            # one low-direction component and one
-            # high-direction component.
+            # one low-direction component and one high-direction component
             self.mixed_band_indices = (
                 2,
                 3,
@@ -2486,7 +2238,7 @@ class MedMultiwaveletDenoisingGenerator(nn.Module):
                 13
             )
         
-            # High-high GHM components.
+            # High-high GHM components
             self.high_band_indices = (
                 10,
                 11,
@@ -2505,7 +2257,7 @@ class MedMultiwaveletDenoisingGenerator(nn.Module):
                 0,
             )
         
-            # LH and HL are mixed-frequency bands.
+            # LH and HL are mixed-frequency bands
             self.mixed_band_indices = (
                 1,
                 2
@@ -2515,29 +2267,20 @@ class MedMultiwaveletDenoisingGenerator(nn.Module):
             self.high_band_indices = (
                 3,
             )
-        # -------------------------------------------------
-        # 2. Shared encoder applied independently to every band
+        # Shared encoder applied independently to every band
         #
         # Output:
-        #   (N,16,F,H/2,W/2)
-        # -------------------------------------------------
+        #   (N,B,F,H/2,W/2)
         self.band_encoder = SharedBandEncoder(
             feature_channels=band_feature_channels
         )
 
-        # -------------------------------------------------
-        #
-        # -------------------------------------------------
-        
+       
 
         
-        # -------------------------------------------------
-        # 4. Common frequency stem
-        #
-        # For F=32:
-        #   input channels = 3 × 2 × 32 = 192
-        #   output channels = 96
-        # -------------------------------------------------
+      
+        # Shared per-band feature projection
+        # 40 -> 144 -> 144
         self.band_projection = nn.Sequential(
             nn.Conv2d(
                 band_feature_channels,
@@ -2558,72 +2301,18 @@ class MedMultiwaveletDenoisingGenerator(nn.Module):
             nn.GELU()
         )
 
-        # -------------------------------------------------
-        # -------------------------------------------------
-        # Branch construction
-        # -------------------------------------------------
         
-        if self.branch_mode in (
-            "cnn",
-            "dual"
-        ):
-            self.cnn_branch = LocalCNNBranch(
-                channels=feature_channels,
-                num_blocks=cnn_blocks
-            )
-        else:
-            self.cnn_branch = None
-        
-        
-        if self.branch_mode in (
-            "mamba",
-            "dual"
-        ):
-            self.mamba_branch = GlobalMambaBranch(
-                channels=feature_channels,
-                num_blocks=mamba_blocks,
-                d_state=16,
-                d_conv=4,
-                expand=2
-            )
-        else:
-            self.mamba_branch = None
+        # Mamba feature modeling
+        self.mamba_processor = MambaFeatureProcessor(
+            channels=feature_channels,
+            num_blocks=mamba_blocks,
+            d_state=16,
+            d_conv=4,
+            expand=2
+        )
 
-        # -------------------------------------------------
-        # -------------------------------------------------
-        # 6. CNN-Mamba fusion
-        # -------------------------------------------------
-        # -------------------------------------------------
-        # CNN-Mamba fusion
-        # Used only for dual-branch experiments.
-        # -------------------------------------------------
         
-        if self.branch_mode == "dual":
-        
-            if self.fusion_type == "gated":
-        
-                self.fusion = CNNMambaGatedFusion(
-                    channels=feature_channels
-                )
-        
-            elif self.fusion_type == "average":
-        
-                self.fusion = CNNMambaAverageFusion()
-        
-        else:
-        
-            self.fusion = None
-        # -------------------------------------------------
-        # 7. Low-frequency structural guide
-        #
-        # Four GHM low-low band features are concatenated:
-        #
-        #   4 × feature_channels
-        #
-        # and projected into one shared structural guide:
-        #
-        #   feature_channels
-        # -------------------------------------------------
+        # Selected low-frequency band features are concatenated and projected into one shared structural guide
         if self.use_alignment:
 
             self.low_frequency_guide = nn.Sequential(
@@ -2652,14 +2341,8 @@ class MedMultiwaveletDenoisingGenerator(nn.Module):
         
             self.low_frequency_guide = None
 
-        # -------------------------------------------------
-        # 8. Shared low-frequency-guided alignment
-        #
-        # The same alignment weights are applied to all
-        # mixed/high-frequency GHM bands. This preserves
-        # parameter efficiency and avoids giving each band
-        # an independent large correction network.
-        # -------------------------------------------------
+        # Shared low-frequency-guided alignment
+        
         if self.use_alignment:
 
             self.hf_alignment = HFAlignmentModule(
@@ -2672,7 +2355,6 @@ class MedMultiwaveletDenoisingGenerator(nn.Module):
         
             self.hf_alignment = None
         
-        # -------------------------------------------------
         if self.use_band_refinement:
 
             self.band_refinement = (
@@ -2718,13 +2400,9 @@ class MedMultiwaveletDenoisingGenerator(nn.Module):
             ]
         )
 
-        # -------------------------------------------------
-        # 10. Full-resolution spatial refinement
-        #
-        # This is applied only after inverse wavelet
-        # reconstruction and therefore operates directly
-        # at the original image resolution H x W.
-        # -------------------------------------------------
+        
+        # Full-resolution spatial refinement. This is applied only after inverse wavelet reconstruction and therefore operates directly at the original image resolution H x W.
+
         if self.use_full_res_refinement:
 
             self.full_res_refinement = (
@@ -2775,9 +2453,7 @@ class MedMultiwaveletDenoisingGenerator(nn.Module):
                 f"Received H={h}, W={w}."
             )
 
-        # -------------------------------------------------
-        # 1. wavelet decomposition
-        # -------------------------------------------------
+        # wavelet decomposition
         bands = self.dwt(noisy)
 
         if bands.size(1) != self.expected_num_bands:
@@ -2788,23 +2464,16 @@ class MedMultiwaveletDenoisingGenerator(nn.Module):
                 f"Received {bands.size(1)}."
             )
 
-        # -------------------------------------------------
-        # 2. Shared per-band encoding
-        #
+        # Shared per-band encoding
         # encoded_bands:
-        #   (N,16,F,H/2,W/2)
-        # -------------------------------------------------
+        #  (N,B,F,H/2,W/2)
         encoded_bands = self.band_encoder(
             bands
         )
 
-        # -------------------------------------------------
-        # ---------------------------------------
         # Flatten the band dimension
-        #
-        # (N,16,32,H/2,W/2)
-        # ->
-        # (N*16,32,H/2,W/2)
+        # (N,B,40,H/2,W/2)
+        # (N*B,40,H/2,W/2)
         # ---------------------------------------
         encoded_flat = encoded_bands.reshape(
             n * self.expected_num_bands,
@@ -2815,54 +2484,13 @@ class MedMultiwaveletDenoisingGenerator(nn.Module):
         projected_flat = self.band_projection(
             encoded_flat
         )
-        # -------------------------------------------------
-        # -------------------------------------------------
-        # Branch processing
-        # -------------------------------------------------
+       
+        # Mamba feature modeling
         
-        if self.branch_mode == "cnn":
-        
-            fused_flat = self.cnn_branch(
-                projected_flat
-            )
-        
-        elif self.branch_mode == "mamba":
-        
-            fused_flat = self.mamba_branch(
-                projected_flat
-            )
-        
-        elif self.branch_mode == "dual":
-        
-            cnn_flat = self.cnn_branch(
-                projected_flat
-            )
-        
-            mamba_flat = self.mamba_branch(
-                projected_flat
-            )
-        
-            fused_flat = self.fusion(
-                cnn_flat,
-                mamba_flat
-            )
-        
-        else:
-        
-            raise RuntimeError(
-                f"Unexpected branch_mode: "
-                f"{self.branch_mode}"
-            )
-
-        # -------------------------------------------------
-        # ---------------------------------------
-        # Restore band dimension
-        #
-        # (N*16,96,H/2,W/2)
-        # ->
-        # (N,16,96,H/2,W/2)
-        # ---------------------------------------
-        fused_bands = fused_flat.reshape(
+        modeled_flat = self.mamba_processor(
+            projected_flat
+        )
+        modeled_bands = modeled_flat.reshape(
             n,
             self.expected_num_bands,
             self.feature_channels,
@@ -2870,24 +2498,19 @@ class MedMultiwaveletDenoisingGenerator(nn.Module):
             w // 2
         )
 
-        # -------------------------------------------------
-        # 8. Build the shared low-frequency structural guide
-        #
-        # Selected GHM low-low features:
-        #     indices = (0, 1, 4, 5)
-        #
-        # Each feature:
-        #     (N, C, H/2, W/2)
-        #
-        # After concatenation:
-        #     (N, 4C, H/2, W/2)
-        # -------------------------------------------------
+        # Build the shared low-frequency structural guide
+        
+        # Selected low-frequency features are concatenated to construct the shared structural guide
+        
+        # Each feature:  (N, C, H/2, W/2)
+        
+        # After concatenation:  (N, 4C, H/2, W/2)
         low_frequency_guide = None
 
         if self.use_alignment:
         
             low_feature_list = [
-                fused_bands[
+                modeled_bands[
                     :,
                     band_index,
                     :,
@@ -2907,23 +2530,17 @@ class MedMultiwaveletDenoisingGenerator(nn.Module):
                     low_features_concat
                 )
             )
-        # -------------------------------------------------
-        # Predict one wavelet noise coefficient map per band
-        # -------------------------------------------------
-        predicted_band_list = []
-        # -------------------------------------------------
-        # 9. Align mixed/high-frequency GHM bands
-        #
-        # Low-low bands remain unchanged.
+        
+        # Align mixed/high-frequency GHM bands
+        # Low-low bands remain unchanged
         # Mixed/high-frequency bands receive residual
-        # refinement guided by the low-frequency structure.
-        # -------------------------------------------------
+        # refinement guided by the low-frequency structure
         aligned_band_feature_list = []
 
         for band_index in range(
             self.expected_num_bands
         ):
-            band_features = fused_bands[
+            band_features = modeled_bands[
                 :,
                 band_index,
                 :,
@@ -2953,38 +2570,39 @@ class MedMultiwaveletDenoisingGenerator(nn.Module):
                 band_features
             )
 
-        aligned_fused_bands = torch.stack(
+        aligned_bands = torch.stack(
             aligned_band_feature_list,
             dim=1
         )
 
-        # -------------------------------------------------
-        # Shared GDFN refinement for all aligned bands
+        #Frequency-collaborative refinement of aligned bands
         #
         # (N,B,C,H/2,W/2)
-        #       ->
         # (N*B,C,H/2,W/2)
-        #       ->
         # shared refinement
-        #       ->
         # (N,B,C,H/2,W/2)
-        # -------------------------------------------------
+
         if self.use_band_refinement:
 
-            refined_fused_bands = self.band_refinement(
-                aligned_fused_bands
+            refined_bands = self.band_refinement(
+                aligned_bands
             )
         
         else:
         
-            refined_fused_bands = (
-                aligned_fused_bands
+            refined_bands = (
+                aligned_bands
             )
+
+
+        # Predict one wavelet noise coefficient map per band
+
+        predicted_band_list = []
         
         for band_index, head in enumerate(
             self.noise_band_heads
         ):
-            band_features = refined_fused_bands[
+            band_features = refined_bands[
                 :,
                 band_index,
                 :,
@@ -3001,10 +2619,9 @@ class MedMultiwaveletDenoisingGenerator(nn.Module):
             )
         
         # -------------------------------------------------
-        # Reassemble the 16 predicted wavelet coefficient maps
-        #
+        # Reassemble the predicted wavelet noise coefficient maps
         # Output:
-        #   (N,16,H/2,W/2)
+        #  (N,B,H/2,W/2)
         # -------------------------------------------------
         predicted_noise_bands = torch.cat(
             predicted_band_list,
@@ -3017,17 +2634,13 @@ class MedMultiwaveletDenoisingGenerator(nn.Module):
         #
         # Output:
         #   (N,1,H,W)
-        # -------------------------------------------------
+
         predicted_noise = self.idwt(
             predicted_noise_bands
         )
         
-        # -------------------------------------------------
-        # 10. Coarse residual denoising
-        #
-        # This is exactly the output of the original
-        # baseline architecture.
-        # -------------------------------------------------
+
+        # Coarse residual denoising
         denoised_coarse = (
             noisy
             - predicted_noise
@@ -3060,19 +2673,16 @@ class MedMultiwaveletDenoisingGenerator(nn.Module):
         
         return denoised
 
-#------------------------------------------------------------------------------
-#--------------------------------------------------------------
+
 class LSGANPatchDiscriminator(nn.Module):
     """discriminator"""
     def __init__(self, in_ch=3, base_ch=64):
         super().__init__()
 
-        # --- BEGIN: ---
         def block(ic, oc, k=4, s=2, p=1):
             layers = [nn.Conv2d(ic, oc, k, s, p)]
             layers.append(nn.LeakyReLU(0.2, inplace=True))
             return layers
-        # --- END ---
 
         layers = []
         ch = base_ch
@@ -3086,17 +2696,14 @@ class LSGANPatchDiscriminator(nn.Module):
     def forward(self, x):
         return self.model(x)  # (B,1,h,w)
 
-#--------------------------------------------------------------------------
+
 class SharedBandEncoder(nn.Module):
     """
-    Encode every wavelet band independently using the same CNN weights.
-
+    Encode every wavelet band independently using shared convolutional weights
     Input:
         bands: (N, B, H, W)
-
     Output:
         encoded: (N, B, F, H, W)
-
     where:
         B = number of wavelet bands
         F = feature channels generated for each band
@@ -3137,7 +2744,7 @@ class SharedBandEncoder(nn.Module):
         if bands.dim() != 4:
             raise ValueError(
                 "SharedBandEncoder expects bands with shape "
-                f"(N,B,H,W), received {tuple(bands.shape)}."
+                f"(N,B,H,W), received {tuple(bands.shape)}"
             )
 
         n, b, h, w = bands.shape
@@ -3163,63 +2770,14 @@ class SharedBandEncoder(nn.Module):
         )
 
         return encoded
-#---------------------------------------------------
 
-#-------------------------------------------------------------
-class LocalCNNBranch(nn.Module):
-    """
-    CNN branch for local noise patterns, edges, and fine structures.
-
-    Input/output:
-        (N, C, H, W)
-    """
+class MambaFeatureProcessor(nn.Module):
+    
 
     def __init__(
         self,
         channels: int = 144,
-        num_blocks: int = 4
-    ):
-        super().__init__()
-
-        self.blocks = nn.Sequential(
-            *[
-                ConvResBlock(channels)
-                for _ in range(num_blocks)
-            ]
-        )
-
-        self.conv_after = nn.Conv2d(
-            channels,
-            channels,
-            kernel_size=3,
-            stride=1,
-            padding=1
-        )
-
-    def forward(
-        self,
-        x: torch.Tensor
-    ) -> torch.Tensor:
-
-        residual = x
-
-        features = self.blocks(x)
-        features = self.conv_after(features)
-
-        return residual + features
-#-----------------------------------------------
-class GlobalMambaBranch(nn.Module):
-    """
-    Mamba branch for global spatial context and long-range dependencies.
-
-    Input/output:
-        (N, C, H, W)
-    """
-
-    def __init__(
-        self,
-        channels: int = 144,
-        num_blocks: int = 4,
+        num_blocks: int = 6,
         d_state: int = 16,
         d_conv: int = 4,
         expand: int = 2
@@ -3257,14 +2815,11 @@ class GlobalMambaBranch(nn.Module):
         features = self.conv_after(features)
 
         return residual + features
-#-----------------------------------------------------------
 
-#-------------------------------------------------------------------------------
-# -----------------------------
+
+
 # Losses
-# -----------------------------
 
-#------------------------------------------------------
 def lsgan_d_loss(d_real: torch.Tensor, d_fake: torch.Tensor) -> torch.Tensor:
     """LSGAN discriminator loss: 0.5*( (D(real)-1)^2 + (D(fake)-0)^2 )"""
     return 0.5 * (
@@ -3275,10 +2830,7 @@ def lsgan_d_loss(d_real: torch.Tensor, d_fake: torch.Tensor) -> torch.Tensor:
 def lsgan_g_loss(d_fake: torch.Tensor) -> torch.Tensor:
     """LSGAN generator loss: 0.5*(D(fake)-1)^2"""
     return 0.5 * F.mse_loss(d_fake, torch.ones_like(d_fake))
-#-------------------------------------------------------------------
 
-
-# ----------------------------------------------------------------
 class CharbonnierLoss(nn.Module):
     def __init__(self, eps=1e-3):
         super().__init__()
@@ -3286,7 +2838,7 @@ class CharbonnierLoss(nn.Module):
     def forward(self, x, y):
         diff = x - y
         return torch.mean(torch.sqrt(diff * diff + self.eps * self.eps))
-#-------------------------------------------------------------------------------
+
 class SSIMLoss(nn.Module):
     def __init__(self):
         super().__init__()
@@ -3302,8 +2854,7 @@ class SSIMLoss(nn.Module):
             size_average=True
         )
 
-#----------------------------------------------------------------------
-#----------------------------------------------
+
 def _reflect_pad_if_needed(img, size):
     h, w = img.shape[:2]
     if h >= size and w >= size:
@@ -3336,9 +2887,8 @@ def _augment_clean(
         clean = np.rot90(clean, k)
 
     return clean.copy()
-# -----------------------------
+
 # Synthetic Gaussian CT denoising dataset
-# -----------------------------
 class CTGaussianDenoisingDataset(Dataset):
     """
     On-the-fly synthetic Gaussian denoising dataset.
@@ -3378,9 +2928,7 @@ class CTGaussianDenoisingDataset(Dataset):
     ):
         super().__init__()
 
-        # -------------------------------------------------
         # Collect image paths
-        # -------------------------------------------------
         self.files = []
 
         for dp, _, fns in os.walk(root):
@@ -3399,9 +2947,7 @@ class CTGaussianDenoisingDataset(Dataset):
                 f"No supported CT images were found in: {root}"
             )
 
-        # -------------------------------------------------
         # Configuration
-        # -------------------------------------------------
         self.patch_size = int(patch_size)
         self.training = bool(training)
 
@@ -3411,12 +2957,9 @@ class CTGaussianDenoisingDataset(Dataset):
 
         self.val_seed = int(val_seed)
 
-        # -------------------------------------------------
         # Noise configuration
-        #
         # Sigma values are supplied in the conventional
-        # image-intensity scale [0,255].
-        # -------------------------------------------------
+        # image-intensity scale [0,255]
         if len(sigma_range) != 2:
             raise ValueError(
                 "sigma_range must contain exactly two values: "
@@ -3430,7 +2973,7 @@ class CTGaussianDenoisingDataset(Dataset):
 
         if self.sigma_min < 0:
             raise ValueError(
-                "Minimum Gaussian noise sigma cannot be negative."
+                "Minimum Gaussian noise sigma cannot be negative"
             )
 
         if self.sigma_max < self.sigma_min:
@@ -3441,11 +2984,10 @@ class CTGaussianDenoisingDataset(Dataset):
 
         if self.validation_sigma < 0:
             raise ValueError(
-                "validation_sigma cannot be negative."
+                "validation_sigma cannot be negative"
             )
 
-        # GHM requires even spatial dimensions because it
-        # reduces H and W by a factor of two.
+        
         if self.patch_size % 2 != 0:
             raise ValueError(
                 "patch_size must be divisible by 2 for the "
@@ -3459,15 +3001,7 @@ class CTGaussianDenoisingDataset(Dataset):
         self,
         clean: np.ndarray
     ) -> np.ndarray:
-        """
-        Extract a square patch from the clean CT image.
-
-        Training:
-            random crop.
-
-        Validation:
-            deterministic center crop.
-        """
+        
 
         # Pad only when the input image is smaller than patch_size.
         clean = _reflect_pad_if_needed(
@@ -3518,13 +3052,7 @@ class CTGaussianDenoisingDataset(Dataset):
         self,
         clean_t: torch.Tensor
     ):
-        """
-        Generate training Gaussian noise using NumPy default_rng,
-        consistent with the final test noise formulation.
-    
-        A new random realization is generated every time an image
-        is sampled during training.
-        """
+        
     
         sigma_255 = random.uniform(
             self.sigma_min,
@@ -3535,8 +3063,7 @@ class CTGaussianDenoisingDataset(Dataset):
             float(sigma_255) / 255.0
         )
     
-        # Deterministic across complete repeated experiments
-        # because np.random is seeded by seed_everything().
+        # Deterministic across complete repeated experiments because np.random is seeded by seed_everything()
         random_seed = int(
             np.random.randint(
                 0,
@@ -3567,15 +3094,7 @@ class CTGaussianDenoisingDataset(Dataset):
         clean_t: torch.Tensor,
         idx: int
     ):
-        """
-        Deterministic Gaussian noise identical in formulation
-        to the final testing protocol.
-    
-        sigma is expressed on the [0,255] scale.
-    
-        Noise realization:
-            NumPy default_rng(val_seed + image_index)
-        """
+        
     
         sigma_255 = float(
             self.validation_sigma
@@ -3614,9 +3133,7 @@ class CTGaussianDenoisingDataset(Dataset):
     ):
         clean_path = self.files[idx]
     
-        # -------------------------------------------------
-        # 1. Read clean grayscale CT image
-        # -------------------------------------------------
+        # Read clean grayscale CT image
         clean = cv2.imread(
             clean_path,
             cv2.IMREAD_GRAYSCALE
@@ -3627,17 +3144,10 @@ class CTGaussianDenoisingDataset(Dataset):
                 f"Could not read CT image: {clean_path}"
             )
 
-        # -------------------------------------------------
-        # 2. Extract clean patch
-        # -------------------------------------------------
+        # Extract clean patch
         clean = self._crop_clean(clean)
 
-        # -------------------------------------------------
-        # 3. Geometric augmentation
-        #
-        # Applied only to training data.
-        # Noise is generated after augmentation.
-        # -------------------------------------------------
+        # Geometric augmentation applied only to training data and  Noise is generated after augmentation
         if self.training:
             clean = _augment_clean(
                 clean,
@@ -3648,15 +3158,13 @@ class CTGaussianDenoisingDataset(Dataset):
         else:
             clean = clean.copy()
 
-        # -------------------------------------------------
-        # 4. Normalize clean image to [0,1]
-        #
+        # Normalize clean image to [0,1]
+        
         # Input PNG values:
         #     [0,255]
-        #
+        
         # Tensor values:
         #     [0,1]
-        # -------------------------------------------------
         clean_t = torch.from_numpy(
             clean.astype(np.float32) / 255.0
         ).unsqueeze(0)
@@ -3664,9 +3172,7 @@ class CTGaussianDenoisingDataset(Dataset):
         # clean_t shape:
         # (1, patch_size, patch_size)
 
-        # -------------------------------------------------
-        # 5. Generate synthetic Gaussian noise
-        # -------------------------------------------------
+        # Generate synthetic Gaussian noise
         if self.training:
             noise_t, _ = (
                 self._generate_training_noise(
@@ -3681,22 +3187,17 @@ class CTGaussianDenoisingDataset(Dataset):
                 )
             )
 
-        # -------------------------------------------------
-        # 6. Form noisy image
-        # -------------------------------------------------
+        # Form noisy image
         noisy_t = clean_t + noise_t
 
-        # Keep the simulated image in the valid normalized
-        # image intensity range.
+        
         noisy_t = torch.clamp(
             noisy_t,
             min=0.0,
             max=1.0
         )
 
-        # -------------------------------------------------
-        # 7. Final validation
-        # -------------------------------------------------
+        # Final validation
         if noisy_t.shape != clean_t.shape:
             raise RuntimeError(
                 "Noisy and clean tensors must have identical "
@@ -3714,69 +3215,43 @@ class CTGaussianDenoisingDataset(Dataset):
                 f"Non-finite values found in clean image: {clean_path}"
             )
 
-        # Training and validation loops can initially keep
-        # the same two-value unpacking structure:
-        #
-        # for noisy, clean in loader:
+        
         return noisy_t, clean_t
-#---------------------------------------------------------
 
 
-# -----------------------------
 # Training / Validation loops
-# -----------------------------
 
 @dataclass
 class TrainConfig:
-    # =====================================================
     # Data paths
-    # =====================================================
     train_dir: str
     val_dir: str
 
-    # =====================================================
     experiment_name: str = "experiment"
 
     wavelet_type: str = "ghm"
     
-    # Branch configuration:
-    # "cnn"   -> CNN branch only
-    # "mamba" -> Mamba branch only
-    # "dual"  -> CNN + Mamba
-    branch_mode: str = "dual"
-    
-    # Fusion is used only when branch_mode="dual".
-    # "none"    -> no fusion
-    # "average" -> simple average fusion
-    # "gated"   -> adaptive gated fusion
-    fusion_type: str = "gated"
-    
+        
     use_alignment: bool = True
     use_band_refinement: bool = True
     use_full_res_refinement: bool = True
     
     save_root: str = "./runs/denoising"
 
-    # =====================================================
     # Denoising data protocol
-    # =====================================================
     patch_size: int = 88
 
     train_sigma_min: float = 0.0
     train_sigma_max: float = 25.0
     validation_sigma: float = 25.0
 
-    # =====================================================
     # DataLoader
-    # =====================================================
     batch_size: int = 2
     num_workers: int = 0
     pin_memory: bool = True
     drop_last: bool = True
 
-    # =====================================================
     # Training
-    # =====================================================
     epochs: int = 30
 
     lr_g: float = 1.5e-4
@@ -3785,9 +3260,7 @@ class TrainConfig:
     beta1: float = 0.9
     beta2: float = 0.999
 
-    # =====================================================
     # Loss weights
-    # =====================================================
     content_weight: float = 1.0
 
     charbonnier_weight: float = 1.15
@@ -3796,35 +3269,23 @@ class TrainConfig:
     adv_weight: float = 0.002
     gan_warmup_epochs: int = 1
 
-    # =====================================================
     # Discriminator and EMA
-    # =====================================================
     disc_channels: int = 64
     ema_decay: float = 0.999
 
-    # =====================================================
     # Reproducibility
-    # =====================================================
     seed: int = 123
     deterministic: bool = True
     validation_seed: int = 123
 
-    # =====================================================
-    # Device
-    # =====================================================
+    
     device: torch.device = torch.device(
         "cuda" if torch.cuda.is_available() else "cpu"
     )
 
     @property
     def save_dir(self) -> str:
-        """
-        Produce an isolated directory for every experiment.
-
-        Examples:
-            ./runs/denoising/GHM_Denoising
-            ./runs/denoising/Haar_Denoising
-        """
+        
         return os.path.join(
             self.save_root,
             self.experiment_name
@@ -3838,23 +3299,7 @@ def validate_denoising(
     loader: DataLoader,
     device: torch.device
 ) -> Tuple[float, float]:
-    """
-    Evaluate the denoising generator using noisy-clean image pairs.
-
-    Args:
-        generator:
-            Denoising model.
-
-        loader:
-            Validation DataLoader returning:
-                noisy, clean
-
-        device:
-            CPU or CUDA device.
-
-    Returns:
-        Mean PSNR and mean SSIM over the validation set.
-    """
+    
     generator.eval()
 
     total_psnr = 0.0
@@ -3889,7 +3334,7 @@ def validate_denoising(
 
     if total_images == 0:
         raise RuntimeError(
-            "The validation DataLoader returned no images."
+            "The validation DataLoader returned no images"
         )
 
     mean_psnr = total_psnr / total_images
@@ -3899,9 +3344,7 @@ def validate_denoising(
 
 
 def train(cfg: TrainConfig):
-    # =====================================================
     # Reproducibility
-    # =====================================================
     seed_everything(
         seed=cfg.seed,
         deterministic=cfg.deterministic
@@ -3910,14 +3353,11 @@ def train(cfg: TrainConfig):
     loader_generator = torch.Generator()
     loader_generator.manual_seed(cfg.seed)
 
-    print("======================================")
     print("Denoising experiment configuration")
-    print("======================================")
     print("Experiment:", cfg.experiment_name)
     print("Wavelet:", cfg.wavelet_type)
 
-    print("Branch mode:", cfg.branch_mode)
-    print("Fusion type:", cfg.fusion_type)
+    
     print("Alignment enabled:", cfg.use_alignment)
     print(
         "Frequency-collaborative refinement:",
@@ -3937,9 +3377,7 @@ def train(cfg: TrainConfig):
     print("Deterministic:", cfg.deterministic)
     print("Save directory:", cfg.save_dir)
 
-    # =====================================================
-    # Device information
-    # =====================================================
+    
     if torch.cuda.is_available():
         print(
             "GPU Detected:",
@@ -3956,10 +3394,7 @@ def train(cfg: TrainConfig):
     )
 
     
-
-    # =====================================================
     # Denoising datasets
-    # =====================================================
     train_dataset = CTGaussianDenoisingDataset(
         root=cfg.train_dir,
         patch_size=cfg.patch_size,
@@ -3993,9 +3428,7 @@ def train(cfg: TrainConfig):
     print("Training images:", len(train_dataset))
     print("Validation images:", len(val_dataset))
 
-    # =====================================================
     # Initial DataLoaders
-    # =====================================================
     train_loader = DataLoader(
         train_dataset,
         batch_size=cfg.batch_size,
@@ -4006,878 +3439,6 @@ def train(cfg: TrainConfig):
         worker_init_fn=seed_worker,
         generator=loader_generator
     )
-
-    
-    # =====================================================
-    # Dataset batch sanity check
-    # =====================================================
-    noisy_batch, clean_batch = next(
-        iter(train_loader)
-    )
-
-    print("\n====== Denoising Batch Sanity Check ======")
-    print("Noisy batch shape:", tuple(noisy_batch.shape))
-    print("Clean batch shape:", tuple(clean_batch.shape))
-
-    print(
-        "Noisy range:",
-        float(noisy_batch.min()),
-        float(noisy_batch.max())
-    )
-
-    print(
-        "Clean range:",
-        float(clean_batch.min()),
-        float(clean_batch.max())
-    )
-
-    expected_shape = (
-        cfg.batch_size,
-        1,
-        cfg.patch_size,
-        cfg.patch_size
-    )
-
-    assert noisy_batch.shape == clean_batch.shape, (
-        "Noisy and clean batch shapes must match. "
-        f"Noisy={tuple(noisy_batch.shape)}, "
-        f"clean={tuple(clean_batch.shape)}."
-    )
-
-    assert tuple(noisy_batch.shape) == expected_shape, (
-        f"Unexpected batch shape: {tuple(noisy_batch.shape)}. "
-        f"Expected {expected_shape}."
-    )
-
-    assert torch.isfinite(noisy_batch).all(), (
-        "Non-finite values found in noisy batch."
-    )
-
-    assert torch.isfinite(clean_batch).all(), (
-        "Non-finite values found in clean batch."
-    )
-
-    print("✅ Denoising batch sanity check passed.")
-
-    # =====================================================
-    # Generator-dataset integration sanity check
-    # =====================================================
-    with torch.no_grad():
-    
-        noisy_dbg = noisy_batch.to(
-            cfg.device,
-            non_blocking=cfg.pin_memory
-        )
-    
-        clean_dbg = clean_batch.to(
-            cfg.device,
-            non_blocking=cfg.pin_memory
-        )
-    
-        gen_tmp = MedMultiwaveletDenoisingGenerator(
-            in_ch=1,
-            out_ch=1,
-            wavelet_type=cfg.wavelet_type,
-            band_feature_channels=40,
-            feature_channels=144,
-            cnn_blocks=6,
-            mamba_blocks=6,
-            branch_mode=cfg.branch_mode,
-            fusion_type=cfg.fusion_type,
-            use_alignment=cfg.use_alignment,
-            use_band_refinement=cfg.use_band_refinement,
-            use_full_res_refinement=cfg.use_full_res_refinement
-        ).to(cfg.device)
-    
-        gen_tmp.eval()
-
-        # -------------------------------------------------
-        # Verify requested architecture
-        # -------------------------------------------------
-        if cfg.branch_mode == "cnn":
-        
-            assert gen_tmp.cnn_branch is not None
-            assert gen_tmp.mamba_branch is None
-            assert gen_tmp.fusion is None
-        
-        elif cfg.branch_mode == "mamba":
-        
-            assert gen_tmp.cnn_branch is None
-            assert gen_tmp.mamba_branch is not None
-            assert gen_tmp.fusion is None
-        
-        elif cfg.branch_mode == "dual":
-        
-            assert gen_tmp.cnn_branch is not None
-            assert gen_tmp.mamba_branch is not None
-            assert gen_tmp.fusion is not None
-        
-        print(
-            "✅ Requested branch architecture was created correctly."
-        )
-
-        
-        
-        if cfg.use_band_refinement:
-
-            assert isinstance(
-                gen_tmp.band_refinement,
-                AdaptiveGHMFrequencyCollaborativeRefinement
-            )
-        
-            initial_collaboration_scale = float(
-                torch.clamp(
-                    gen_tmp.band_refinement.collaboration_scale,
-                    min=0.0,
-                    max=1.0
-                )
-                .detach()
-                .cpu()
-                .item()
-            )
-        
-            print(
-                "Initial frequency-collaboration scale:",
-                initial_collaboration_scale
-            )
-        
-        else:
-        
-            assert gen_tmp.band_refinement is None
-        
-            initial_collaboration_scale = None
-        
-            print(
-                "Frequency-collaborative refinement disabled."
-            )
-        if gen_tmp.use_alignment:
-
-            assert gen_tmp.hf_alignment is not None, (
-                "Alignment is enabled, but hf_alignment was not created."
-            )
-        
-            assert gen_tmp.low_frequency_guide is not None, (
-                "Alignment is enabled, but low_frequency_guide was not created."
-            )
-        
-        else:
-        
-            assert gen_tmp.hf_alignment is None, (
-                "Alignment is disabled, but hf_alignment still exists."
-            )
-        
-            assert gen_tmp.low_frequency_guide is None, (
-                "Alignment is disabled, but low_frequency_guide still exists."
-            )
-        
-            alignment_parameter_names = [
-                name
-                for name, _ in gen_tmp.named_parameters()
-                if (
-                    name.startswith("hf_alignment.")
-                    or name.startswith("low_frequency_guide.")
-                )
-            ]
-        
-            assert len(alignment_parameter_names) == 0, (
-                "Alignment is disabled, but alignment-related trainable "
-                f"parameters still exist: {alignment_parameter_names}"
-            )
-        
-            print(
-                "✅ Alignment modules and parameters are completely absent."
-            )
-
-        if gen_tmp.use_alignment:
-        
-            initial_mixed_alignment_scale = float(
-                torch.clamp(
-                    gen_tmp.hf_alignment.mixed_scale,
-                    min=0.0,
-                    max=1.0
-                )
-                .detach()
-                .cpu()
-                .item()
-            )
-        
-            initial_high_alignment_scale = float(
-                torch.clamp(
-                    gen_tmp.hf_alignment.high_scale,
-                    min=0.0,
-                    max=1.0
-                )
-                .detach()
-                .cpu()
-                .item()
-            )
-        
-            print(
-                "Initial mixed-band alignment scale:",
-                initial_mixed_alignment_scale
-            )
-        
-            print(
-                "Initial high-band alignment scale:",
-                initial_high_alignment_scale
-            )
-        
-        else:
-        
-            print(
-                "Alignment disabled: "
-                "alignment parameters are not active."
-            )
-    
-        print(
-            "\n====== Generator-Dataset Integration Check ======"
-        )
-    
-        # -------------------------------------------------
-        # 1.  decomposition
-        # -------------------------------------------------
-        bands_dbg = gen_tmp.dwt(
-            noisy_dbg
-        )
-    
-        expected_half_size = (
-            cfg.patch_size // 2,
-            cfg.patch_size // 2
-        )
-    
-        print(
-            "Input noisy shape:",
-            tuple(noisy_dbg.shape)
-        )
-    
-        print(
-            f"{cfg.wavelet_type.upper()} bands shape:",
-            tuple(bands_dbg.shape)
-        )
-    
-        expected_num_bands = gen_tmp.expected_num_bands
-        
-        assert bands_dbg.shape == (
-            cfg.batch_size,
-            expected_num_bands,
-            expected_half_size[0],
-            expected_half_size[1]
-        ), (
-            f"Unexpected {cfg.wavelet_type.upper()} output shape. "
-            f"Received {tuple(bands_dbg.shape)}."
-        )
-    
-        # -------------------------------------------------
-        # 2. Shared band encoding
-        # -------------------------------------------------
-        encoded_dbg = gen_tmp.band_encoder(
-            bands_dbg
-        )
-    
-        print(
-            "Encoded bands shape:",
-            tuple(encoded_dbg.shape)
-        )
-    
-        assert encoded_dbg.shape == (
-            cfg.batch_size,
-            expected_num_bands,
-            40,
-            expected_half_size[0],
-            expected_half_size[1]
-        ), (
-            "Unexpected encoded-band shape. "
-            f"Received {tuple(encoded_dbg.shape)}."
-        )
-    
-        # -------------------------------------------------
-        # -------------------------------------------------
-        # 3. Flatten independent GHM bands
-        # -------------------------------------------------
-        encoded_flat_dbg = encoded_dbg.reshape(
-            cfg.batch_size * expected_num_bands,
-            40,
-            expected_half_size[0],
-            expected_half_size[1]
-        )
-        
-        print(
-            "Flattened encoded bands:",
-            tuple(encoded_flat_dbg.shape)
-        )
-        
-        assert encoded_flat_dbg.shape == (
-            cfg.batch_size * expected_num_bands,
-            40,
-            expected_half_size[0],
-            expected_half_size[1]
-        )
-        
-        # -------------------------------------------------
-        # 4. Shared band projection
-        # -------------------------------------------------
-        projected_flat_dbg = gen_tmp.band_projection(
-            encoded_flat_dbg
-        )
-        
-        print(
-            f"Projected {cfg.wavelet_type.upper()} bands:",
-            tuple(projected_flat_dbg.shape)
-        )
-        
-        assert projected_flat_dbg.shape == (
-            cfg.batch_size * expected_num_bands,
-            144,
-            expected_half_size[0],
-            expected_half_size[1]
-        )
-        
-        # -------------------------------------------------
-        # 5. Shared CNN and Mamba paths
-        # -------------------------------------------------
-        
-        cnn_flat_dbg = None
-        mamba_flat_dbg = None
-        
-        if gen_tmp.branch_mode == "cnn":
-        
-            fused_flat_dbg = gen_tmp.cnn_branch(
-                projected_flat_dbg
-            )
-        
-            assert gen_tmp.mamba_branch is None
-            assert gen_tmp.fusion is None
-        
-            print(
-                "✅ CNN-only branch check passed."
-            )
-        
-        elif gen_tmp.branch_mode == "mamba":
-        
-            fused_flat_dbg = gen_tmp.mamba_branch(
-                projected_flat_dbg
-            )
-        
-            assert gen_tmp.cnn_branch is None
-            assert gen_tmp.fusion is None
-        
-            print(
-                "✅ Mamba-only branch check passed."
-            )
-        
-        else:
-        
-            cnn_flat_dbg = gen_tmp.cnn_branch(
-                projected_flat_dbg
-            )
-        
-            mamba_flat_dbg = gen_tmp.mamba_branch(
-                projected_flat_dbg
-            )
-        
-            fused_flat_dbg = gen_tmp.fusion(
-                cnn_flat_dbg,
-                mamba_flat_dbg
-            )
-        
-            print(
-                "✅ Dual-branch fusion check passed."
-            )
-        
-        print(
-            f"Fused {cfg.wavelet_type.upper()} bands:",
-            tuple(fused_flat_dbg.shape)
-        )
-        
-        assert fused_flat_dbg.shape == (
-            cfg.batch_size * expected_num_bands,
-            144,
-            expected_half_size[0],
-            expected_half_size[1]
-        )
-        
-        # -------------------------------------------------
-        # 6. Restore explicit band dimension
-        # -------------------------------------------------
-        fused_bands_dbg = fused_flat_dbg.reshape(
-            cfg.batch_size,
-            expected_num_bands,
-            144,
-            expected_half_size[0],
-            expected_half_size[1]
-        )
-        # -------------------------------------------------
-        #
-        # -------------------------------------------------
-        # 7. Build low-frequency guide only when
-        #    alignment is enabled
-        # -------------------------------------------------
-        low_feature_list_dbg = None
-        low_features_concat_dbg = None
-        low_frequency_guide_dbg = None
-        
-        if gen_tmp.use_alignment:
-        
-            low_feature_list_dbg = [
-                fused_bands_dbg[
-                    :,
-                    band_index,
-                    :,
-                    :,
-                    :
-                ]
-                for band_index in gen_tmp.low_band_indices
-            ]
-        
-            low_features_concat_dbg = torch.cat(
-                low_feature_list_dbg,
-                dim=1
-            )
-        
-            print(
-                f"Concatenated low-frequency "
-                f"{cfg.wavelet_type.upper()} features:",
-                tuple(low_features_concat_dbg.shape)
-            )
-        
-            assert low_features_concat_dbg.shape == (
-                cfg.batch_size,
-                144 * len(gen_tmp.low_band_indices),
-                expected_half_size[0],
-                expected_half_size[1]
-            ), (
-                "Unexpected concatenated low-frequency "
-                f"feature shape: {tuple(low_features_concat_dbg.shape)}."
-            )
-        
-            low_frequency_guide_dbg = (
-                gen_tmp.low_frequency_guide(
-                    low_features_concat_dbg
-                )
-            )
-        
-            print(
-                "Low-frequency structural guide:",
-                tuple(low_frequency_guide_dbg.shape)
-            )
-        
-            assert low_frequency_guide_dbg.shape == (
-                cfg.batch_size,
-                144,
-                expected_half_size[0],
-                expected_half_size[1]
-            ), (
-                "Unexpected low-frequency guide shape: "
-                f"{tuple(low_frequency_guide_dbg.shape)}."
-            )
-        
-            assert torch.isfinite(
-                low_frequency_guide_dbg
-            ).all(), (
-                "Non-finite values found in "
-                "low-frequency structural guide."
-            )
-        
-        else:
-        
-            print(
-                "Alignment disabled: "
-                "low-frequency guide was not computed."
-            )
-        
-        
-        # -------------------------------------------------
-        # 8. Apply alignment only when enabled
-        # -------------------------------------------------
-        aligned_band_feature_list_dbg = []
-        
-        for band_index in range(
-            expected_num_bands
-        ):
-            band_features_dbg = fused_bands_dbg[
-                :,
-                band_index,
-                :,
-                :,
-                :
-            ]
-        
-            if gen_tmp.use_alignment:
-        
-                if band_index in gen_tmp.mixed_band_indices:
-        
-                    band_features_dbg = gen_tmp.hf_alignment(
-                        feat_hf=band_features_dbg,
-                        feat_lf=low_frequency_guide_dbg,
-                        band_group="mixed"
-                    )
-        
-                elif band_index in gen_tmp.high_band_indices:
-        
-                    band_features_dbg = gen_tmp.hf_alignment(
-                        feat_hf=band_features_dbg,
-                        feat_lf=low_frequency_guide_dbg,
-                        band_group="high"
-                    )
-        
-            aligned_band_feature_list_dbg.append(
-                band_features_dbg
-            )
-        
-        
-        aligned_fused_bands_dbg = torch.stack(
-            aligned_band_feature_list_dbg,
-            dim=1
-        )
-
-        # -------------------------------------------------
-        # Verify alignment behavior
-        # -------------------------------------------------
-        if not gen_tmp.use_alignment:
-        
-            assert torch.equal(
-                aligned_fused_bands_dbg,
-                fused_bands_dbg
-            ), (
-                "Alignment is disabled, but band features "
-                "were unexpectedly modified."
-            )
-        
-            print("✅ Alignment bypass check passed.")
-        
-        else:
-        
-            for low_index in gen_tmp.low_band_indices:
-        
-                assert torch.equal(
-                    aligned_fused_bands_dbg[:, low_index],
-                    fused_bands_dbg[:, low_index]
-                ), (
-                    f"Low-frequency band {low_index} "
-                    "was unexpectedly modified."
-                )
-        
-            print("✅ Alignment selective-application check passed.")
-        
-        print(
-            f"Aligned {cfg.wavelet_type.upper()} "
-            f"band features:",
-            tuple(aligned_fused_bands_dbg.shape)
-        )
-        
-        assert aligned_fused_bands_dbg.shape == (
-            cfg.batch_size,
-            expected_num_bands,
-            144,
-            expected_half_size[0],
-            expected_half_size[1]
-        ), (
-            "Unexpected aligned-band feature shape: "
-            f"{tuple(aligned_fused_bands_dbg.shape)}."
-        )
-        
-        assert torch.isfinite(
-            aligned_fused_bands_dbg
-        ).all(), (
-            "Non-finite values found after alignment stage."
-        )
-        
-        
-        # -------------------------------------------------
-        # 7. Predict 16 GHM coefficient maps
-        # -------------------------------------------------
-        predicted_band_list_dbg = []
-        # -------------------------------------------------
-    
-        if gen_tmp.use_band_refinement:
-
-            refined_fused_bands_dbg = (
-                gen_tmp.band_refinement(
-                    aligned_fused_bands_dbg
-                )
-            )
-        
-        else:
-        
-            refined_fused_bands_dbg = (
-                aligned_fused_bands_dbg
-            )
-        
-            assert gen_tmp.band_refinement is None
-        
-            print(
-                "✅ Frequency-collaborative refinement bypassed."
-            )
-        
-        print(
-            f"Refined {cfg.wavelet_type.upper()} "
-            f"band features:",
-            tuple(refined_fused_bands_dbg.shape)
-        )
-        
-        assert refined_fused_bands_dbg.shape == (
-            cfg.batch_size,
-            expected_num_bands,
-            144,
-            expected_half_size[0],
-            expected_half_size[1]
-        ), (
-            "Unexpected refined-band feature shape: "
-            f"{tuple(refined_fused_bands_dbg.shape)}."
-        )
-        
-        assert torch.isfinite(
-            refined_fused_bands_dbg
-        ).all(), (
-            "Non-finite values found after band refinement."
-        )
-        
-        for band_index, head in enumerate(
-            gen_tmp.noise_band_heads
-        ):
-            predicted_band_dbg = head(
-                refined_fused_bands_dbg[
-                    :,
-                    band_index,
-                    :,
-                    :,
-                    :
-                ]
-            )
-        
-            predicted_band_list_dbg.append(
-                predicted_band_dbg
-            )
-        
-        predicted_noise_bands_dbg = torch.cat(
-            predicted_band_list_dbg,
-            dim=1
-        )
-        
-        print(
-            f"Predicted {cfg.wavelet_type.upper()} noise bands:",
-            tuple(predicted_noise_bands_dbg.shape)
-        )
-        
-        assert predicted_noise_bands_dbg.shape == (
-            cfg.batch_size,
-            expected_num_bands,
-            expected_half_size[0],
-            expected_half_size[1]
-        )
-        
-        # -------------------------------------------------
-        # 8. Inverse-GHM predicted noise
-        # -------------------------------------------------
-        predicted_noise_dbg = gen_tmp.idwt(
-            predicted_noise_bands_dbg
-        )
-        
-        print(
-            "Predicted spatial noise:",
-            tuple(predicted_noise_dbg.shape)
-        )
-        
-        assert predicted_noise_dbg.shape == noisy_dbg.shape
-    
-        # -------------------------------------------------
-        # -------------------------------------------------
-        # Full-resolution refinement sanity check
-        # -------------------------------------------------
-        denoised_coarse_dbg = (
-            noisy_dbg
-            - predicted_noise_dbg
-        )
-        
-        full_res_correction_dbg = None
-        full_res_scale_dbg = None
-        
-        if gen_tmp.use_full_res_refinement:
-        
-            assert gen_tmp.full_res_refinement is not None
-            assert gen_tmp.full_res_scale is not None
-        
-            full_res_correction_dbg = (
-                gen_tmp.full_res_refinement(
-                    denoised_coarse=denoised_coarse_dbg,
-                    noisy=noisy_dbg
-                )
-            )
-        
-            assert (
-                full_res_correction_dbg.shape
-                == noisy_dbg.shape
-            ), (
-                "Unexpected full-resolution correction "
-                f"shape: {tuple(full_res_correction_dbg.shape)}."
-            )
-        
-            assert torch.isfinite(
-                full_res_correction_dbg
-            ).all(), (
-                "Non-finite values found in "
-                "full-resolution correction."
-            )
-        
-            full_res_scale_dbg = torch.clamp(
-                gen_tmp.full_res_scale,
-                min=0.0,
-                max=1.0
-            )
-        
-            denoised_refined_dbg = (
-                denoised_coarse_dbg
-                + full_res_scale_dbg
-                * full_res_correction_dbg
-            )
-        
-            assert (
-                denoised_refined_dbg.shape
-                == noisy_dbg.shape
-            )
-        
-            assert torch.isfinite(
-                denoised_refined_dbg
-            ).all()
-        
-            print(
-                "✅ Full-resolution refinement check passed."
-            )
-        
-        else:
-        
-            assert gen_tmp.full_res_refinement is None
-            assert gen_tmp.full_res_scale is None
-        
-            denoised_refined_dbg = (
-                denoised_coarse_dbg
-            )
-        
-            print(
-                "✅ Full-resolution refinement bypassed."
-            )
-    
-        # -------------------------------------------------
-        # 4. Full generator output
-        # -------------------------------------------------
-        denoised_dbg = gen_tmp(
-            noisy_dbg
-        )
-    
-        print(
-            "Denoised output shape:",
-            tuple(denoised_dbg.shape)
-        )
-    
-        print(
-            "Raw denoised range:",
-            float(denoised_dbg.min()),
-            float(denoised_dbg.max())
-        )
-    
-        assert denoised_dbg.shape == clean_dbg.shape, (
-            "Denoised output and clean target must have "
-            "identical shapes. "
-            f"Denoised={tuple(denoised_dbg.shape)}, "
-            f"clean={tuple(clean_dbg.shape)}."
-        )
-    
-        assert torch.isfinite(
-            denoised_dbg
-        ).all(), (
-            "Non-finite values found in generator output."
-        )
-    
-        print(
-            "✅ Dataset and generator are correctly connected."
-        )
-        print(
-            "   Wavelet:",
-            cfg.wavelet_type.upper()
-        )
-        print(
-            "   Branch mode:",
-            cfg.branch_mode
-        )
-        print(
-            "   Fusion:",
-            cfg.fusion_type
-        )
-        print(
-            "   Alignment:",
-            cfg.use_alignment
-        )
-        print(
-            "   Frequency refinement:",
-            cfg.use_band_refinement
-        )
-        print(
-            "   Full-resolution refinement:",
-            cfg.use_full_res_refinement
-        )
-
-    # Free temporary generator before training model creation.
-    del gen_tmp
-    del bands_dbg
-    del encoded_dbg
-    
-    del encoded_flat_dbg
-    del projected_flat_dbg
-    del cnn_flat_dbg
-    del mamba_flat_dbg
-    del fused_flat_dbg
-    del fused_bands_dbg
-    del low_feature_list_dbg
-    del low_features_concat_dbg
-    del low_frequency_guide_dbg
-    del aligned_band_feature_list_dbg
-    del band_features_dbg
-    del aligned_fused_bands_dbg
-    del predicted_band_list_dbg
-    del predicted_band_dbg
-    del predicted_noise_bands_dbg
-    del predicted_noise_dbg
-
-    del denoised_coarse_dbg
-    del full_res_correction_dbg
-    del full_res_scale_dbg
-    del denoised_refined_dbg
-    
-    del denoised_dbg
-    del noisy_dbg
-    del clean_dbg
-    
-    del refined_fused_bands_dbg
-    
-    
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-
-        # =====================================================
-    # Reset randomness after sanity checks
-    #
-    # This ensures that temporary checks do not alter the
-    # actual experiment initialization or DataLoader order.
-    # =====================================================
-    seed_everything(
-        seed=cfg.seed,
-        deterministic=cfg.deterministic
-    )
-
-    loader_generator = torch.Generator()
-    loader_generator.manual_seed(cfg.seed)
-
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=cfg.batch_size,
-        shuffle=True,
-        num_workers=cfg.num_workers,
-        pin_memory=cfg.pin_memory,
-        drop_last=cfg.drop_last,
-        worker_init_fn=seed_worker,
-        generator=loader_generator
-    )
-
     val_loader = DataLoader(
         val_dataset,
         batch_size=cfg.batch_size,
@@ -4886,25 +3447,21 @@ def train(cfg: TrainConfig):
         pin_memory=cfg.pin_memory,
         drop_last=False
     )
+
     
+    
+      
    
 
-    # ===================== Models =====================
-    # =====================================================
+    # Models
     # Denoising generator
-    # =====================================================
     
-
     gen = MedMultiwaveletDenoisingGenerator(
         in_ch=1,
-        out_ch=1,
         wavelet_type=cfg.wavelet_type,
         band_feature_channels=40,
         feature_channels=144,
-        cnn_blocks=6,
         mamba_blocks=6,
-        branch_mode=cfg.branch_mode,
-        fusion_type=cfg.fusion_type,
         use_alignment=cfg.use_alignment,
         use_band_refinement=cfg.use_band_refinement,
         use_full_res_refinement=cfg.use_full_res_refinement
@@ -4915,12 +3472,10 @@ def train(cfg: TrainConfig):
         in_ch=1,
         base_ch=cfg.disc_channels
     ).to(cfg.device)
-
-       
-    
+        
 
 
-    # ===================== Losses & Optimizers =====================
+    # Losses & Optimizers 
     
     charb = CharbonnierLoss().to(cfg.device) 
     
@@ -4932,10 +3487,7 @@ def train(cfg: TrainConfig):
     opt_d_patch = torch.optim.Adam(disc_patch.parameters(), lr=cfg.lr_d, betas=(cfg.beta1, cfg.beta2))
 
 
-    # =====================================================
-    # =====================================================
     # Resume training from checkpoint
-    # =====================================================
     checkpoint_path = os.path.join(
         cfg.save_dir,
         "last.pt"
@@ -4948,7 +3500,7 @@ def train(cfg: TrainConfig):
     if os.path.exists(checkpoint_path):
 
         print(
-            f"✅ Loading checkpoint from "
+            f"Loading checkpoint from "
             f"{checkpoint_path}..."
         )
 
@@ -4957,9 +3509,7 @@ def train(cfg: TrainConfig):
             map_location=cfg.device
         )
 
-        # -------------------------------------------------
         # Restore normal generator training weights
-        # -------------------------------------------------
         if "gen" not in checkpoint:
             raise KeyError(
                 "The checkpoint does not contain "
@@ -4971,18 +3521,14 @@ def train(cfg: TrainConfig):
             strict=True
         )
 
-        # -------------------------------------------------
         # Restore discriminator weights
-        # -------------------------------------------------
         if "disc_patch" in checkpoint:
             disc_patch.load_state_dict(
                 checkpoint["disc_patch"],
                 strict=True
             )
 
-        # -------------------------------------------------
         # Restore optimizer states
-        # -------------------------------------------------
         if "opt_g" in checkpoint:
             opt_g.load_state_dict(
                 checkpoint["opt_g"]
@@ -4993,9 +3539,7 @@ def train(cfg: TrainConfig):
                 checkpoint["opt_d_patch"]
             )
 
-        # -------------------------------------------------
         # Restore epoch and best validation score
-        # -------------------------------------------------
         start_epoch = (
             int(
                 checkpoint.get(
@@ -5014,16 +3558,14 @@ def train(cfg: TrainConfig):
         )
 
         print(
-            f"✅ Training resumed from Epoch "
+            f"Training resumed from Epoch "
             f"{start_epoch}. "
             f"Current best PSNR: "
             f"{best_psnr:.4f}"
         )
 
 
-    # =====================================================
     # Initialize or restore EMA
-    # =====================================================
     ema = EMA(
         gen,
         decay=cfg.ema_decay
@@ -5039,24 +3581,22 @@ def train(cfg: TrainConfig):
         )
 
         print(
-            "✅ EMA state restored from checkpoint."
+            "EMA state restored from checkpoint"
         )
 
     elif checkpoint is not None:
         print(
-            "⚠️ The checkpoint does not contain an EMA state. "
-            "EMA was initialized from the loaded generator weights."
+            "The checkpoint does not contain an EMA state "
+            "EMA was initialized from the loaded generator weights"
         )
 
     else:
         print(
-            "✅ EMA initialized from the new generator weights."
+            "EMA initialized from the new generator weights"
         )
 
 
-    # =====================================================
     # Logging paths
-    # =====================================================
     log_path = os.path.join(
         cfg.save_dir,
         "log.txt"
@@ -5064,7 +3604,7 @@ def train(cfg: TrainConfig):
     
 
         
-    # ===================== CSV: debug per-iter =====================
+    # CSV: debug per-iter
     debug_path = os.path.join(cfg.save_dir, 'train_debug_iter.csv')
     if not os.path.exists(debug_path) and start_epoch == 1:
         with open(debug_path, 'w', encoding='utf-8') as f:
@@ -5078,15 +3618,13 @@ def train(cfg: TrainConfig):
             "clean_min,clean_max\n"
         )
 
-    # ===================== CSV: train =====================
+    # CSV: train
     train_loss_path = os.path.join(cfg.save_dir, 'train_loss_epoch.csv')
     if not os.path.exists(train_loss_path) and start_epoch == 1:
         with open(train_loss_path, 'w', encoding='utf-8') as f:
            f.write(
                 "epoch,"
                 "wavelet_type,"
-                "branch_mode,"
-                "fusion_type,"
                 "use_alignment,"
                 "use_band_refinement,"
                 "use_full_res_refinement,"
@@ -5099,7 +3637,7 @@ def train(cfg: TrainConfig):
            
 
 
-    # ===================== CSV: val =====================
+    # CSV: val
     val_metrics_path = os.path.join(cfg.save_dir, 'val_metrics_epoch.csv')
     if not os.path.exists(val_metrics_path) and start_epoch == 1:
         with open(val_metrics_path, 'w', encoding='utf-8') as f:
@@ -5108,7 +3646,7 @@ def train(cfg: TrainConfig):
             )
 
 
-    # ===================== Epoch Loop =====================
+    # Epoch Loop
     
     for epoch in range(start_epoch, cfg.epochs + 1):
     
@@ -5144,9 +3682,7 @@ def train(cfg: TrainConfig):
                 and epoch > cfg.gan_warmup_epochs
             )
 
-            # =================================================
-            # 1. Train the discriminator
-            # =================================================
+            # Train the discriminator
             if use_gan:
                 with torch.no_grad():
                     denoised_detached = gen(noisy).clamp(
@@ -5185,9 +3721,7 @@ def train(cfg: TrainConfig):
                     device=cfg.device
                 )
 
-            # =================================================
-            # 2. Train the denoising generator
-            # =================================================
+            # Train the denoising generator
             denoised = gen(noisy)
 
             denoised_clamped = denoised.clamp(
@@ -5235,9 +3769,7 @@ def train(cfg: TrainConfig):
                 + cfg.adv_weight * loss_adversarial
             )
 
-            # =================================================
-            # 3. Output and input statistics
-            # =================================================
+            #  Output and input statistics
             with torch.no_grad():
                 denoised_min = float(
                     denoised.min().item()
@@ -5291,12 +3823,10 @@ def train(cfg: TrainConfig):
                     f"{clean_max:.6f}\n"
                 )
 
-            # =================================================
-            # 4. Numerical stability checks
-            # =================================================
+            #  Numerical stability checks
             if not torch.isfinite(loss_generator):
                 print(
-                    "❌ Non-finite generator loss at "
+                    " Non-finite generator loss at "
                     f"epoch {epoch}, iteration {iter_in_epoch}. "
                     "The generator update was skipped."
                 )
@@ -5312,16 +3842,14 @@ def train(cfg: TrainConfig):
                 or denoised_max > 2.0
             ):
                 print(
-                    "⚠️ Denoised output is outside the "
+                    "Denoised output is outside the "
                     "expected training range at "
                     f"epoch {epoch}, iteration {iter_in_epoch}: "
                     f"min={denoised_min:.3f}, "
                     f"max={denoised_max:.3f}"
                 )
 
-            # =================================================
-            # 5. Generator optimization
-            # =================================================
+            # Generator optimization
             opt_g.zero_grad(
                 set_to_none=True
             )
@@ -5336,9 +3864,7 @@ def train(cfg: TrainConfig):
             opt_g.step()
             ema.update(gen)
 
-            # =================================================
-            # 6. Accumulate epoch statistics
-            # =================================================
+            # Accumulate epoch statistics
             epoch_loss_d += loss_d.item()
             epoch_loss_g += loss_generator.item()
             epoch_content += loss_content.item()
@@ -5369,7 +3895,7 @@ def train(cfg: TrainConfig):
 
         
 
-        # ===== 4) Averages per epoch (train) =====
+        # Averages per epoch (train) 
         mean_loss_g      = epoch_loss_g      / max(1, num_batches)
         mean_loss_d      = epoch_loss_d      / max(1, num_batches)
         mean_content     = epoch_content     / max(1, num_batches)
@@ -5401,7 +3927,6 @@ def train(cfg: TrainConfig):
         
 
 
-        # ✅ صف واحد فقط في CSV، مطابق للهيدر
         with open(
             train_loss_path,
             "a",
@@ -5409,9 +3934,7 @@ def train(cfg: TrainConfig):
         ) as f:
             f.write(
                 f"{epoch},"
-                f"{cfg.wavelet_type},"
-                f"{cfg.branch_mode},"
-                f"{cfg.fusion_type},"
+                f"{cfg.wavelet_type},"                
                 f"{cfg.use_alignment},"
                 f"{cfg.use_band_refinement},"
                 f"{cfg.use_full_res_refinement},"
@@ -5446,31 +3969,26 @@ def train(cfg: TrainConfig):
         
         print(train_message)
 
-        # ===== 5) Validation (using EMA weights) =====
+        # Validation using EMA weights ====
         ema.store(gen)
         ema.copy_to(gen)
         val_psnr, val_ssim = validate_denoising(gen, val_loader, cfg.device)
         ema.restore(gen)
 
-        # حفظ val في CSV
         with open(val_metrics_path, 'a', encoding='utf-8') as f_val:
             f_val.write(f"{epoch},{val_psnr:.6f},{val_ssim:.6f}\n")
 
-        # حفظ log نصي
         with open(log_path, 'a', encoding='utf-8') as f:
             f.write(f"{epoch}\t{val_psnr:.3f}\t{val_ssim:.3f}\n")
 
-        # =====================================================
-        # =====================================================
         # Update best validation score
-        # =====================================================
         is_best = val_psnr > best_psnr
         
         if is_best:
             best_psnr = val_psnr
         
         
-        # =====================================================
+       
         # Save last resumable checkpoint
         #
         # gen:
@@ -5478,7 +3996,7 @@ def train(cfg: TrainConfig):
         #
         # ema:
         #     exponential moving average shadow weights
-        # =====================================================
+    
         checkpoint_state = {
             "gen": gen.state_dict(),
             "ema": ema.state_dict(),
@@ -5503,9 +4021,7 @@ def train(cfg: TrainConfig):
         )
         
         
-        # =====================================================
         # Save best checkpoint
-        # =====================================================
         if is_best:
         
             torch.save(
@@ -5516,9 +4032,7 @@ def train(cfg: TrainConfig):
                 )
             )
         
-            # -------------------------------------------------
             # Save a separate EMA generator for final testing
-            # -------------------------------------------------
             ema.store(gen)
             ema.copy_to(gen)
         
