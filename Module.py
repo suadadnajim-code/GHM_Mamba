@@ -304,9 +304,9 @@ def batch_psnr_ssim_basic_sr(
 
 class GHMFullMWT2D(nn.Module):
     """
-    Full 2D GHM multiwavelet transform using MATLAB-style repeated-row preprocessing.
+    Full 2D GHM multiwavelet transform  repeated-row preprocessing.
 
-    MATLAB preprocessing:
+    preprocessing:
         vector sample = [x, x / sqrt(2)]
 
     Input:
@@ -363,7 +363,7 @@ class GHMFullMWT2D(nn.Module):
         self.register_buffer("H_mats", torch.stack([H0, H1, H2, H3], dim=0))
         self.register_buffer("G_mats", torch.stack([G0, G1, G2, G3], dim=0))
 
-        # Fixed MATLAB-style repeated-row scale.
+        # repeated-row scale.
         # It is stored with the model but is not trainable.
         self.register_buffer(
             "pre_scale",
@@ -375,16 +375,16 @@ class GHMFullMWT2D(nn.Module):
 
     def _get_pre_scale(self):
         """
-        Return the fixed MATLAB-style preprocessing scale.
+        Return preprocessing scale.
     
         Fixed value:
             1 / sqrt(2) = 0.70710678...
         """
         return self.pre_scale
 
-    def _preprocess_width_matlab(self, x):
+    def _preprocess_width(self, x):
         """
-        MATLAB-style repeated-row preprocessing along width,
+        repeated-row preprocessing along width,
         with a fixed scale of 1/sqrt(2).
 
     
@@ -396,7 +396,7 @@ class GHMFullMWT2D(nn.Module):
         v2 = x * pre_scale
         return torch.stack([v1, v2], dim=-1)
 
-    def _preprocess_height_matlab(self, x):
+    def _preprocess_height(self, x):
         
         pre_scale = self._get_pre_scale()
         v1 = x.permute(0, 1, 3, 2).contiguous()
@@ -415,7 +415,7 @@ class GHMFullMWT2D(nn.Module):
         if W % 2 != 0:
             raise ValueError(f"W must be divisible by 2. Got W={W}")
 
-        v = self._preprocess_width_matlab(x)  # (N,C,H,W,2)
+        v = self._preprocess_width(x)  # (N,C,H,W,2)
 
         Lout = W // 2
         base = 2 * torch.arange(Lout, device=x.device)
@@ -446,7 +446,7 @@ class GHMFullMWT2D(nn.Module):
         if H % 2 != 0:
             raise ValueError(f"H must be divisible by 2. Got H={H}")
 
-        v = self._preprocess_height_matlab(x)  # (N,C,W,H,2)
+        v = self._preprocess_height(x)  # (N,C,W,H,2)
 
         Lout = H // 2
         base = 2 * torch.arange(Lout, device=x.device)
@@ -485,7 +485,7 @@ class GHMInverseMWT2D(nn.Module):
     Numerical inverse of GHMFullMWT2D using pseudo-inverse
     matrices for the corresponding 1D GHM analysis transform.
 
-    The inverse assumes the exact same fixed MATLAB-style
+    The inverse assumes the exact same 
     preprocessing scale used by GHMFullMWT2D:
 
         pre_scale = 1 / sqrt(2)
@@ -535,7 +535,7 @@ class GHMInverseMWT2D(nn.Module):
             G_mats.detach().clone()
         )
 
-        # Fixed MATLAB-style repeated-row scale.
+        # repeated-row scale.
         #
         # It exactly matches GHMFullMWT2D and is not
         # a trainable parameter.
